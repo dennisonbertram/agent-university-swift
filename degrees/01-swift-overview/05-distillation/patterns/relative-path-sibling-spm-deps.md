@@ -43,7 +43,7 @@ The product name (`AnthropicClient`) is what L2 exposes; the package name (`L2-a
 ## Variants and trade-offs
 - L3, L4, L5, L6, and the capstone all consume L2 this way. Modifying L2 invalidates downstream builds immediately, which is the desired teaching loop.
 - Trade-off: relative paths break when you move a package outside the sibling layout. Once a package stabilises, promote it to a tagged release URL.
-- For Docker / CI: the Dockerfile in the capstone explicitly documents that `COPY ../L2-anthropic-client ./L2-anthropic-client/` requires changing the build context — see ADR `decision-records/adr-006-shared-library-promotion-deferred.md` and gotcha `gotchas/dockerfile-sibling-dep-build-context.md` (none — covered by the playbook).
+- For Docker / CI: the Dockerfile in the capstone explicitly documents that `COPY ../L2-anthropic-client ./L2-anthropic-client/` requires changing the build context — see ADR `decision-records/adr-006-shared-library-promotion-deferred.md` and [playbook-dockerize-swift-server.md](../playbooks/playbook-dockerize-swift-server.md) (the Dockerfile sibling-dep caveat is covered in the playbook; no standalone gotcha).
 - Promote to a real package only when the rule of three is satisfied: third consumer signals the abstraction is stable.
 
 ## Evidence

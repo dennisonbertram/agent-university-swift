@@ -23,8 +23,8 @@ The L6 and capstone iOS apps live as bare `.swift` source files in an `iosApp/` 
 ## Evidence
 - POC: `L6-swiftui-ios-app/iosApp/ChatIOSApp.swift:1-22` — bare `@main` source file.
 - POC: `L6-swiftui-ios-app/iosApp/RootView.swift` — bare root view.
-- POC: `L6-swiftui-ios-app/OPEN-IN-XCODE.md:1-22` — 9-step walkthrough.
-- POC: `L-capstone-multiplatform-chat/iosApp/OPEN-IN-XCODE.md:1-13` — 5-step walkthrough plus env-var setup.
+- POC: `L6-swiftui-ios-app/OPEN-IN-XCODE.md:1-21` — 9-step walkthrough.
+- POC: `L-capstone-multiplatform-chat/iosApp/OPEN-IN-XCODE.md:1-12` — 5-step walkthrough plus env-var setup.
 - POC: No `.xcodeproj` is committed in either POC root.
 - Planning: `02-planning/02-xcode-decision.md` §4 lines 52-61 — explicit gating decision: "For L6, Xcode install is required. Defer the install request until L6 begins."
 - See also: anti-pattern `anti-patterns/hand-written-xcodeproj-pbxproj.md`.
