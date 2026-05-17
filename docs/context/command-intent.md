@@ -45,3 +45,29 @@ The user expects a self-contained Swift "degree" matching the structure of `bun-
 
 - Hummingbird vs Vapor: Hummingbird chosen. Researcher may surface a reason to revisit at Phase 2.
 - The host machine has Swift 6.1.2; the researcher should confirm whether Swift 6.2 / 6.3 introduces material changes worth noting in the source-inventory.
+
+## Scope amendment — LLM + iOS + macOS UI
+
+After the coordinator presented Option D (server/CLI only) and the user approved it, the user added: *"go with your recommendations but include using an LLM in swift and making a front end for iphone and for desktop os."*
+
+Therefore three new domains are added to scope:
+
+1. **Using an LLM from Swift.** Specifically a typed Anthropic API client (sync + streaming) as a SwiftPM library — the shared core that every higher-level POC depends on.
+2. **macOS desktop frontend** using SwiftUI for macOS — a native chat UI that uses the shared LLM client.
+3. **iOS / iPhone frontend** using SwiftUI for iOS — same chat UI, sharing the LLM client via a SwiftPM package, demonstrating multiplatform code reuse.
+
+## Xcode constraint (acknowledged)
+
+The host machine only has Swift Command Line Tools, not full Xcode. iOS simulator builds and SwiftUI previews require full Xcode. The coordinator will scaffold the UI POCs (L5/L6/L-capstone) so they are build-ready and ship with a documented "Install Xcode to verify" gate. macOS-only SwiftUI may partially work with CLT — researcher will confirm in Phase 2.
+
+## Revised POC progression
+
+| Level | POC slug | Concept introduced | Xcode required to build? |
+|-------|----------|--------------------|--------------------------|
+| L1 | `L1-hello-spm` | SwiftPM + swift-testing | No |
+| L2 | `L2-anthropic-client` | Library design, Anthropic API, Codable, error handling | No |
+| L3 | `L3-cli-chat` | swift-argument-parser, async streaming, actors, Sendable | No |
+| L4 | `L4-hummingbird-tool-service` | HTTP service exposing LLM tool surface | No |
+| L5 | `L5-swiftui-macos-app` | SwiftUI macOS, app lifecycle, state management | Yes (likely) |
+| L6 | `L6-swiftui-ios-app` | SwiftUI iOS, target sharing via SwiftPM, multiplatform code reuse | Yes |
+| L-capstone | `L-capstone-multiplatform-chat` | All combined: shared core + macOS app + iOS app + Hummingbird backend | Yes |

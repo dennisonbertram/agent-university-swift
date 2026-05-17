@@ -8,17 +8,21 @@ LLM agents (autonomous coding agents). Every artifact in this repo is optimized 
 
 ## Scope
 
-Server-side and CLI Swift, focused on the surface that's most useful for agents building tools and services:
+Full-stack Swift for autonomous coding agents:
 
-- Swift 6 language fundamentals (types, protocols, generics, error handling)
-- Concurrency: async/await, structured concurrency, actors, Sendable
-- SwiftPM (executable + library targets, dependencies, `swift test`)
-- `swift-argument-parser` for CLIs
-- `swift-testing` (the new testing framework that ships with Swift 6)
-- HTTP service with Hummingbird
-- Building an agent-callable tool service as the capstone
+- **Language & runtime:** Swift 6 fundamentals — types, protocols, generics, error handling.
+- **Concurrency:** async/await, structured concurrency, actors, `Sendable`, `AsyncSequence` streaming.
+- **Packaging:** SwiftPM (executable, library, multiplatform), `swift-testing`, `swift-argument-parser`.
+- **LLM integration:** typed Anthropic Messages API client with streaming.
+- **CLI:** terminal chat tool against Claude.
+- **Server:** Hummingbird HTTP service exposing the LLM as a tool surface.
+- **macOS desktop app:** SwiftUI chat UI using the shared LLM client.
+- **iOS / iPhone app:** SwiftUI chat UI sharing code with the macOS app via a SwiftPM package.
+- **Capstone:** unified multiplatform chat app + Hummingbird backend, end-to-end.
 
-Out of scope: SwiftUI, UIKit, iOS/macOS app development (would require full Xcode; this degree runs on Command Line Tools only).
+Out of scope: UIKit/AppKit, watchOS/tvOS/visionOS, Vapor, distributed actors, Embedded Swift, on-device ML.
+
+The host machine has Swift Command Line Tools only — full Xcode must be installed before L5/L6/capstone can be build-verified. This is flagged in the readiness assessment.
 
 ## Layout
 
