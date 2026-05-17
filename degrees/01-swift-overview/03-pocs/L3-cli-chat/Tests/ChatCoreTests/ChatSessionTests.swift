@@ -95,6 +95,51 @@ func errorAfterOneDeltaKeepsPartial() async throws {
     #expect(msgs[1].content == .text("partial"))
 }
 
+// MARK: - REGRESSION-001: system prompt carried into MessageRequest
+
+@Test("REGRESSION-001: ChatSession constructed with system prompt sends it in MessageRequest")
+func systemPromptCarriedIntoRequest() async throws {
+    let mock = MockLLMService()
+    mock.events = [
+        .contentBlockDelta(index: 0, textDelta: "ok"),
+        .messageStop
+    ]
+
+    let session = ChatSession(
+        service: mock,
+        model: "test-model",
+        maxTokens: 512,
+        system: "be brief"
+    )
+
+    for try await _ in session.send(userText: "test") {}
+
+    #expect(mock.capturedRequests.count == 1, "Exactly one request should be captured")
+    let req = mock.capturedRequests[0]
+    #expect(req.system == "be brief",
+            "system field must equal 'be brief'; if nil, system prompt was dropped")
+}
+
+// MARK: - REGRESSION-002: stream=true always set on every send
+
+@Test("REGRESSION-002: MessageRequest always has stream=true on every send")
+func streamFlagAlwaysTrue() async throws {
+    let mock = MockLLMService()
+    mock.events = [
+        .contentBlockDelta(index: 0, textDelta: "ok"),
+        .messageStop
+    ]
+
+    let session = ChatSession(service: mock, model: "test-model")
+
+    for try await _ in session.send(userText: "test") {}
+
+    #expect(mock.capturedRequests.count == 1)
+    let req = mock.capturedRequests[0]
+    #expect(req.stream == true,
+            "stream must be true; if nil/false, streaming was accidentally disabled")
+}
+
 // MARK: - BT-006: consumer cancels early → no crash, history reflects partial
 
 @Test("BT-006: consumer cancels after first chunk → no crash; history has partial assistant")
