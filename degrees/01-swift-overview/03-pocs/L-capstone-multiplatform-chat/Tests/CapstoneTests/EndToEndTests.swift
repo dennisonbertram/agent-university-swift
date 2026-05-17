@@ -1,4 +1,9 @@
 // EndToEndTests.swift — BT-001, BT-002: full ViewModel ↔ Backend ↔ MockUpstream chain
+//
+// Uses withLiveBackendForURLSession so URLSession-based BackendLLMService can connect
+// to the Hummingbird backend (URLSession and the HummingbirdTesting NIO client use
+// different transport stacks in swift test; the withLiveBackendForURLSession helper
+// starts a real server that URLSession can connect to).
 
 import Testing
 import Hummingbird
@@ -7,6 +12,34 @@ import Foundation
 import AnthropicClient
 import ChatBackendLib
 @testable import ChatCore
+
+// MARK: - Result type
+
+struct VMResult: Sendable {
+    let messages: [ChatMessage]
+    let isStreaming: Bool
+    let errorMessage: String?
+}
+
+// MARK: - Bridge class
+
+final class VMResultCapture: @unchecked Sendable {
+    private let continuation: AsyncStream<VMResult>.Continuation
+    let stream: AsyncStream<VMResult>
+
+    init() {
+        var cont: AsyncStream<VMResult>.Continuation!
+        stream = AsyncStream<VMResult> { cont = $0 }
+        continuation = cont
+    }
+
+    func deliver(_ result: VMResult) {
+        continuation.yield(result)
+        continuation.finish()
+    }
+}
+
+// MARK: - Tests
 
 @Suite("Capstone End-to-End")
 struct EndToEndTests {
@@ -22,42 +55,44 @@ struct EndToEndTests {
             .messageStop
         ]
 
-        let app = buildBackend(service: upstream)
-        try await app.test(.live) { client in
-            let port = client.port!
-            let backendService = BackendLLMService(
-                baseURL: URL(string: "http://127.0.0.1:\(port)")!
-            )
-            // Create and interact with MainActor-bound vm on the MainActor
-            let result = try await MainActor.run {
+        try await withLiveBackendForURLSession(service: upstream) { port in
+            let backendURL = URL(string: "http://127.0.0.1:\(port)")!
+            let session = URLSession(configuration: .ephemeral)
+            let backendService = BackendLLMService(baseURL: backendURL, session: session)
+
+            let capture = VMResultCapture()
+            Task { @MainActor in
                 let vm = ChatViewModel(
                     service: backendService,
                     model: "claude-test",
                     system: "be brief"
                 )
-                return Task {
-                    await vm.send(userText: "hi")
-                    return (
-                        messages: vm.messages,
-                        isStreaming: vm.isStreaming,
-                        captureCount: upstream.capturedRequests.count
-                    )
-                }
-            }.value
+                await vm.send(userText: "hi")
+                capture.deliver(VMResult(
+                    messages: vm.messages,
+                    isStreaming: vm.isStreaming,
+                    errorMessage: vm.errorMessage
+                ))
+            }
+
+            var result: VMResult? = nil
+            for await r in capture.stream { result = r }
+
+            let captureCount = upstream.capturedRequests.count
+            let r = try #require(result)
 
             // Two messages: user + assistant
-            #expect(result.messages.count == 2)
-            if result.messages.count >= 1 {
-                #expect(result.messages[0].role == .user)
-                #expect(result.messages[0].text == "hi")
+            #expect(r.messages.count == 2)
+            if r.messages.count >= 1 {
+                #expect(r.messages[0].role == .user)
+                #expect(r.messages[0].text == "hi")
             }
-            if result.messages.count >= 2 {
-                #expect(result.messages[1].role == .assistant)
-                #expect(result.messages[1].text == "Hello world")
+            if r.messages.count >= 2 {
+                #expect(r.messages[1].role == .assistant)
+                #expect(r.messages[1].text == "Hello world")
             }
-            #expect(result.isStreaming == false)
-            // Backend received exactly one request
-            #expect(result.captureCount == 1)
+            #expect(r.isStreaming == false)
+            #expect(captureCount == 1)
         }
     }
 
@@ -70,25 +105,29 @@ struct EndToEndTests {
             .messageStop
         ]
 
-        let app = buildBackend(service: upstream)
-        try await app.test(.live) { client in
-            let port = client.port!
-            let backendService = BackendLLMService(
-                baseURL: URL(string: "http://127.0.0.1:\(port)")!
-            )
-            let capturedSystem = try await MainActor.run {
+        try await withLiveBackendForURLSession(service: upstream) { port in
+            let backendURL = URL(string: "http://127.0.0.1:\(port)")!
+            let session = URLSession(configuration: .ephemeral)
+            let backendService = BackendLLMService(baseURL: backendURL, session: session)
+
+            let capture = VMResultCapture()
+            Task { @MainActor in
                 let vm = ChatViewModel(
                     service: backendService,
                     model: "claude-test",
                     system: "be brief"
                 )
-                return Task {
-                    await vm.send(userText: "hello")
-                    return upstream.capturedRequests.first?.system
-                }
-            }.value
+                await vm.send(userText: "hello")
+                capture.deliver(VMResult(
+                    messages: vm.messages,
+                    isStreaming: vm.isStreaming,
+                    errorMessage: vm.errorMessage
+                ))
+            }
 
-            // The upstream mock should have captured the system prompt
+            for await _ in capture.stream { break }
+
+            let capturedSystem = upstream.capturedRequests.first?.system
             #expect(capturedSystem == "be brief")
         }
     }

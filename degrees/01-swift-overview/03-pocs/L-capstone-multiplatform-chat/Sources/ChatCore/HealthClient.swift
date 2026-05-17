@@ -1,4 +1,4 @@
-// HealthClient.swift — STUB for RED phase
+// HealthClient.swift — tiny client for /health endpoint
 
 import Foundation
 
@@ -12,7 +12,13 @@ public struct HealthClient: Sendable {
     }
 
     public func check() async -> Bool {
-        // STUB: always returns false
-        return false
+        var req = URLRequest(url: baseURL.appendingPathComponent("health"))
+        req.httpMethod = "GET"
+        do {
+            let (_, response) = try await session.data(for: req)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
     }
 }

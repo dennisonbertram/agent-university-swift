@@ -14,44 +14,49 @@ struct BackendLLMServiceTests {
     // BT-003: 401 from backend → BackendLLMService throws .unauthorized → ChatViewModel surfaces errorMessage
     @Test("401 response: ChatViewModel surfaces errorMessage and rolls back assistant message")
     func unauthorizedResponseSurfacesError() async throws {
-        // Upstream mock that throws AnthropicError.unauthorized
         let upstream = MockUpstreamLLMService()
         upstream.throwError = AnthropicError.unauthorized(body: "bad key")
 
-        let app = buildBackend(service: upstream)
-        try await app.test(.live) { client in
-            let port = client.port!
+        try await withLiveBackendForURLSession(service: upstream) { port in
+            let session = URLSession(configuration: .ephemeral)
             let backendService = BackendLLMService(
-                baseURL: URL(string: "http://127.0.0.1:\(port)")!
+                baseURL: URL(string: "http://127.0.0.1:\(port)")!,
+                session: session
             )
-            let (errorMessage, msgCount, firstRole) = try await MainActor.run {
+
+            let capture = VMResultCapture()
+            Task { @MainActor in
                 let vm = ChatViewModel(service: backendService, model: "claude-test")
-                return Task {
-                    await vm.send(userText: "ping")
-                    return (vm.errorMessage, vm.messages.count, vm.messages.first?.role)
-                }
-            }.value
+                await vm.send(userText: "ping")
+                capture.deliver(VMResult(
+                    messages: vm.messages,
+                    isStreaming: vm.isStreaming,
+                    errorMessage: vm.errorMessage
+                ))
+            }
+
+            var result: VMResult? = nil
+            for await r in capture.stream { result = r }
+            let r = try #require(result)
 
             // After 401: errorMessage is set, assistant message rolled back
-            #expect(errorMessage != nil)
-            // Only the user message remains (assistant was rolled back)
-            #expect(msgCount == 1)
-            #expect(firstRole == .user)
+            #expect(r.errorMessage != nil)
+            #expect(r.messages.count == 1)
+            #expect(r.messages.first?.role == .user)
         }
     }
 
     // BT-004: Cancellation mid-stream — iteration stops cleanly, no partial-state leak
     @Test("Cancellation mid-stream: iteration stops cleanly")
     func cancellationMidStream() async throws {
-        // Use an upstream that produces many deltas but no messageStop
         let upstream = MockUpstreamLLMService()
         upstream.events = Array(repeating: StreamEvent.contentBlockDelta(index: 0, textDelta: "x"), count: 100)
 
-        let app = buildBackend(service: upstream)
-        try await app.test(.live) { client in
-            let port = client.port!
+        try await withLiveBackendForURLSession(service: upstream) { port in
+            let session = URLSession(configuration: .ephemeral)
             let backendService = BackendLLMService(
-                baseURL: URL(string: "http://127.0.0.1:\(port)")!
+                baseURL: URL(string: "http://127.0.0.1:\(port)")!,
+                session: session
             )
 
             let request = MessageRequest(
@@ -60,7 +65,6 @@ struct BackendLLMServiceTests {
                 messages: [InputMessage(role: .user, content: .text("hi"))]
             )
 
-            // Create task and cancel it quickly
             let task = Task {
                 var count = 0
                 do {
@@ -75,7 +79,6 @@ struct BackendLLMServiceTests {
             }
             task.cancel()
 
-            // Task must finish (no hang) — reaching here proves clean termination
             let _ = try? await task.value
             #expect(Bool(true), "Stream cancelled cleanly without hanging")
         }
@@ -90,11 +93,11 @@ struct BackendLLMServiceTests {
             .messageStop
         ]
 
-        let app = buildBackend(service: upstream)
-        try await app.test(.live) { client in
-            let port = client.port!
+        try await withLiveBackendForURLSession(service: upstream) { port in
+            let session = URLSession(configuration: .ephemeral)
             let backendService = BackendLLMService(
-                baseURL: URL(string: "http://127.0.0.1:\(port)")!
+                baseURL: URL(string: "http://127.0.0.1:\(port)")!,
+                session: session
             )
 
             let request = MessageRequest(
@@ -108,7 +111,6 @@ struct BackendLLMServiceTests {
                 receivedEvents.append(event)
             }
 
-            // Should receive contentBlockDelta and messageStop
             #expect(receivedEvents.contains(.messageStop))
             let hasTextDelta = receivedEvents.contains(where: {
                 if case .contentBlockDelta(_, _) = $0 { return true }
