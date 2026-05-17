@@ -1,4 +1,4 @@
-// ChatViewModelTests.swift — BT-001 through BT-006, swift-testing
+// ChatViewModelTests.swift — BT-001 through BT-006 + regression tests, swift-testing
 
 import Testing
 import AnthropicClient
@@ -127,5 +127,58 @@ struct ChatViewModelTests {
 
         #expect(vm.messages.isEmpty, "messages must be empty after clear()")
         #expect(vm.errorMessage == nil, "errorMessage must be nil after clear()")
+    }
+}
+
+// MARK: - Regression Tests
+
+@MainActor
+@Suite("ChatViewModel Regression")
+struct ChatViewModelRegressionTests {
+
+    // MARK: - REGRESSION-001: system prompt forwarded into MessageRequest
+
+    @Test("REGRESSION-001: system prompt set on init is forwarded into every MessageRequest")
+    func systemPromptForwardedIntoRequest() async {
+        let mock = MockLLMService()
+        mock.events = [
+            .contentBlockDelta(index: 0, textDelta: "ok"),
+            .messageStop
+        ]
+        // Construct with a system prompt
+        let vm = ChatViewModel(service: mock, system: "be brief")
+        await vm.send(userText: "test")
+
+        #expect(mock.capturedRequests.count == 1, "Exactly one request should be captured")
+        let req = mock.capturedRequests[0]
+        #expect(req.system == "be brief",
+                "system field must equal 'be brief'; if nil, system prompt was dropped")
+    }
+
+    // MARK: - REGRESSION-002: in-flight assistant message has isStreaming == true; flips after messageStop
+
+    @Test("REGRESSION-002: assistant ChatMessage has isStreaming=true during stream, false after messageStop")
+    func assistantMessageIsStreamingFlagFlips() async {
+        let gated = GatedMockLLMService()
+        let vm = ChatViewModel(service: gated)
+
+        let sendTask = Task { @MainActor in
+            await vm.send(userText: "hi")
+        }
+
+        // Observe state mid-stream (within the 80ms pause)
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        let midStreamAssistant = vm.messages.first(where: { $0.role == .assistant })
+        #expect(midStreamAssistant != nil, "An assistant placeholder must exist while streaming")
+        #expect(midStreamAssistant?.isStreaming == true,
+                "Assistant ChatMessage.isStreaming must be true while the stream is in progress")
+
+        // Wait for completion
+        await sendTask.value
+
+        let finalAssistant = vm.messages.first(where: { $0.role == .assistant })
+        #expect(finalAssistant?.isStreaming == false,
+                "Assistant ChatMessage.isStreaming must flip to false after messageStop")
     }
 }
