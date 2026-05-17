@@ -15,3 +15,8 @@ func greetEmpty() {
 func greetTrimmed() {
     #expect(Greeter.greet(name: "  Alice  ") == "Hello, Alice!")
 }
+
+@Test("Multi-word names preserve internal spaces")
+func greetMultiWord() {
+    #expect(Greeter.greet(name: "Alice Cooper") == "Hello, Alice Cooper!")
+}
