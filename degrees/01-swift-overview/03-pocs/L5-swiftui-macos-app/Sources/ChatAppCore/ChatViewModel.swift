@@ -1,4 +1,4 @@
-// ChatViewModel.swift — STUB: empty implementation so red tests fail meaningfully
+// ChatViewModel.swift — full implementation: @Observable, MainActor-bound, streaming via LLMService
 
 import AnthropicClient
 import Foundation
@@ -31,16 +31,105 @@ public final class ChatViewModel {
         self.system = system
     }
 
-    /// STUB: does nothing — tests will fail because messages stays empty
+    // MARK: - Public API
+
+    /// Send a user turn. Returns when the assistant message is fully committed or an error occurs.
     public func send(userText: String) async {
-        // intentionally empty stub
+        let userMsg = ChatMessage(role: .user, text: userText)
+        messages.append(userMsg)
+        errorMessage = nil
+
+        let snapshot = messages.map { msg in
+            InputMessage(role: msg.role, content: .text(msg.text))
+        }
+        let request = MessageRequest(
+            model: model,
+            maxTokens: maxTokens,
+            messages: snapshot,
+            system: system,
+            temperature: nil,
+            stream: true
+        )
+
+        let assistantId = UUID()
+        messages.append(ChatMessage(id: assistantId, role: .assistant, text: "", isStreaming: true))
+        isStreaming = true
+
+        let serviceLocal = self.service
+
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                for try await event in serviceLocal.stream(request) {
+                    try Task.checkCancellation()
+                    switch event {
+                    case .contentBlockDelta(_, let chunk):
+                        await MainActor.run { self.appendDelta(toId: assistantId, chunk: chunk) }
+                    case .messageStop:
+                        await MainActor.run { self.finishStreaming(id: assistantId) }
+                        return
+                    default:
+                        break
+                    }
+                }
+                // Stream ended without messageStop — treat as complete
+                await MainActor.run { self.finishStreaming(id: assistantId) }
+            } catch is CancellationError {
+                // Partial message stays; just mark streaming done
+                await MainActor.run { self.finishStreaming(id: assistantId) }
+            } catch {
+                // Hard error: roll back in-progress assistant message, surface error
+                await MainActor.run { self.rollbackAssistant(id: assistantId, error: error) }
+            }
+        }
+
+        await streamTask?.value
     }
 
     public func cancel() {
-        // intentionally empty stub
+        streamTask?.cancel()
+        streamTask = nil
+        isStreaming = false
     }
 
     public func clear() {
-        // intentionally empty stub
+        messages.removeAll()
+        errorMessage = nil
+    }
+
+    // MARK: - Private helpers
+
+    private func appendDelta(toId id: UUID, chunk: String) {
+        if let idx = messages.firstIndex(where: { $0.id == id }) {
+            messages[idx].text += chunk
+        }
+    }
+
+    private func finishStreaming(id: UUID) {
+        if let idx = messages.firstIndex(where: { $0.id == id }) {
+            messages[idx].isStreaming = false
+        }
+        isStreaming = false
+    }
+
+    private func rollbackAssistant(id: UUID, error: Error) {
+        messages.removeAll { $0.id == id }
+        isStreaming = false
+        errorMessage = humanReadable(error)
+    }
+
+    private func humanReadable(_ error: Error) -> String {
+        if let e = error as? AnthropicError {
+            switch e {
+            case .unauthorized: return "Unauthorized — check ANTHROPIC_API_KEY."
+            case .rateLimited(let retryAfter, _):
+                return retryAfter.map { "Rate limited — retry after \($0)s." } ?? "Rate limited."
+            case .badRequest(let body): return "Bad request: \(body)"
+            case .serverError(let s, _): return "Server error \(s)."
+            case .decodeFailure(let u): return "Decode error: \(u)"
+            case .streamProtocol(let m): return "Stream error: \(m)"
+            }
+        }
+        return "Unexpected error: \(error)"
     }
 }
