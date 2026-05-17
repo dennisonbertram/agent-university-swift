@@ -1,6 +1,13 @@
-// Stub implementation — returns empty string so tests fail (RED phase)
 public enum Greeter {
     public static func greet(name: String) -> String {
-        return ""
+        let trimmed = name.trimmingPrefix(while: \.isWhitespace)
+            .reversed()
+            .drop(while: \.isWhitespace)
+            .reversed()
+        let result = String(trimmed)
+        if result.isEmpty {
+            return "Hello, stranger!"
+        }
+        return "Hello, \(result)!"
     }
 }
