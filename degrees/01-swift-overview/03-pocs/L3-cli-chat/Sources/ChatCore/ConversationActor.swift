@@ -1,4 +1,4 @@
-// ConversationActor.swift — actor wrapping messages history (STUBBED for RED phase)
+// ConversationActor.swift — actor wrapping messages history
 import AnthropicClient
 
 public actor ConversationActor {
@@ -6,24 +6,25 @@ public actor ConversationActor {
     public init() {}
 
     public func append(role: Role, text: String) {
-        // STUB: intentionally does nothing — tests will fail
+        messages.append(InputMessage(role: role, content: .text(text)))
     }
 
     public func appendOrExtend(role: Role, deltaText: String) {
-        // STUB: intentionally does nothing — tests will fail
+        // If last message is same role with .text content, coalesce; else add new.
+        if let last = messages.last,
+           last.role == role,
+           case .text(let existing) = last.content {
+            messages[messages.count - 1] = InputMessage(role: role, content: .text(existing + deltaText))
+        } else {
+            messages.append(InputMessage(role: role, content: .text(deltaText)))
+        }
     }
 
-    public func snapshot() -> [InputMessage] {
-        // STUB: returns empty — tests expecting messages will fail
-        return []
-    }
+    public func snapshot() -> [InputMessage] { messages }
 
     public func removeLast() {
-        // STUB: does nothing
+        if !messages.isEmpty { messages.removeLast() }
     }
 
-    public func count() -> Int {
-        // STUB: always returns 0 — tests expecting > 0 will fail
-        return 0
-    }
+    public func count() -> Int { messages.count }
 }
